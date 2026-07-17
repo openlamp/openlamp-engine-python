@@ -109,11 +109,12 @@ process** — [`openlamp-midi`](https://github.com/openlamp/midi) (`beatsync.py`
 reaches the engine **only** over this local HTTP API on `127.0.0.1:8377` (`/cmd`,
 `/status`).
 
-Because Ableton Link (via [aalink](https://pypi.org/project/aalink/)) is **GPLv2**, that
-separation matters: the GPL combined-work lives entirely inside the `openlamp-midi`
-process. The engine is a genuinely separate program communicating over HTTP, so it stays
-under its own permissive license and the GPL obligation does not propagate to it. Full
-write-up in the [`openlamp-midi` README](https://github.com/openlamp/midi#architecture--the-ableton-link--gpl-boundary).
+Because [Ableton Link](https://github.com/Ableton/link) is **GPLv2-or-later** and its Python
+binding [aalink](https://pypi.org/project/aalink/) is **GPLv3**, that separation matters: the GPL
+combined-work lives entirely inside the `openlamp-midi` process. The engine is a genuinely separate
+program communicating over HTTP, so it stays under its own permissive license and the GPL obligation
+does not propagate to it. Full write-up in the [`openlamp-midi`
+README](https://github.com/openlamp/midi#architecture--the-ableton-link--gpl-boundary).
 
 ## One host at a time — the rule
 
