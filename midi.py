@@ -81,6 +81,11 @@ DEFAULT = {
     "modifiers": {"72": "beat", "73": "flash"},
     "cc": {"1": "bri", "2": "cct", "3": "hue", "4": "sat",
            "5": "fx", "6": "sx", "7": "ix", "8": "pal"},
+    # high-res CC (opt-in): ingest 14-bit values from MSB+LSB pairs (CC N + CC N+32, the
+    # standard MIDI-1.0 high-resolution scheme most DAWs emit) for step-free fades — 16384
+    # levels instead of 128. The true MIDI-2.0 UMP 32-bit path is a future profile (needs a
+    # UMP transport; rtmidi is MIDI 1.0). See wled-midi SPEC §11.
+    "highres_cc": False,
     "feedback": False,           # true -> open "OpenLamp Feedback" MIDI OUT reflecting state
     "feedback_port": "OpenLamp Feedback",
     "programs": [],              # empty -> Program Change n maps to WLED preset n+1
@@ -167,6 +172,7 @@ class Bridge:
         self.last_bpm = None
         self.hue = {}                 # per-channel hue (continuous colour)
         self.sat = {}                 # per-channel saturation
+        self.cc_msb = {}              # high-res CC: chan -> {base-cc -> last MSB value}
         self.fx = {}                  # per-channel WLED effect {fx,sx,ix,pal}
         self.beat = {}                # per-channel beat-mode on/off
         self.bri = {}                 # per-channel set brightness (for beat pulse + settle)
@@ -240,33 +246,47 @@ class Bridge:
                 if not st:                           # leaving beat mode: settle brightness
                     send('{"bri":%d}' % self.bri.get(chan, 255), target)
 
-    def on_cc(self, num, val, target, chan):
-        kind = self.cfg["cc"].get(str(num))
-        if kind:
-            self.fb.cc(chan, num, val)             # reflect value (motor faders / LED rings)
+    def _apply_cc(self, kind, f, target, chan):
+        """Apply a CC by its normalised fraction f in [0,1] — shared by 7-bit and 14-bit paths."""
         if kind == "bri":
-            self.bri[chan] = round(val / 127 * 255)
+            self.bri[chan] = round(f * 255)
             send('{"bri":%d}' % self.bri[chan], target)
         elif kind == "cct":
-            send('{"cct":%d}' % round(val / 127 * 255), target)
+            send('{"cct":%d}' % round(f * 255), target)
         elif kind in ("hue", "sat"):
             if kind == "hue":
-                self.hue[chan] = val / 127.0
+                self.hue[chan] = f
             else:
-                self.sat[chan] = val / 127.0
-            h = self.hue.get(chan, 0.0)
-            s = self.sat.get(chan, 1.0)
-            r, g, b = colorsys.hsv_to_rgb(h, s, 1.0)
+                self.sat[chan] = f
+            r, g, b = colorsys.hsv_to_rgb(self.hue.get(chan, 0.0), self.sat.get(chan, 1.0), 1.0)
             send('{"col":[%d,%d,%d]}' % (round(r*255), round(g*255), round(b*255)), target)
         elif kind in ("fx", "sx", "ix", "pal"):
-            f = self.fx.setdefault(chan, {"fx": 0, "sx": 128, "ix": 128, "pal": 0})
+            fx = self.fx.setdefault(chan, {"fx": 0, "sx": 128, "ix": 128, "pal": 0})
             if kind == "fx":
-                f["fx"] = round(val / 127 * (FALLBACK_FXCOUNT - 1))
+                fx["fx"] = round(f * (FALLBACK_FXCOUNT - 1))
             elif kind == "pal":
-                f["pal"] = round(val / 127 * (FALLBACK_PALCOUNT - 1))
+                fx["pal"] = round(f * (FALLBACK_PALCOUNT - 1))
             else:
-                f[kind] = round(val / 127 * 255)
-            send('{"fx":%d,"sx":%d,"ix":%d,"pal":%d}' % (f["fx"], f["sx"], f["ix"], f["pal"]), target)
+                fx[kind] = round(f * 255)
+            send('{"fx":%d,"sx":%d,"ix":%d,"pal":%d}' % (fx["fx"], fx["sx"], fx["ix"], fx["pal"]), target)
+
+    def on_cc(self, num, val, target, chan):
+        hr = self.cfg.get("highres_cc")
+        if hr and 33 <= num <= 40:                 # LSB of a high-res pair (base CC = num - 32)
+            base = num - 32
+            kind = self.cfg["cc"].get(str(base))
+            if not kind:
+                return
+            msb = self.cc_msb.get(chan, {}).get(base, 0)
+            self._apply_cc(kind, ((msb << 7) | val) / 16383.0, target, chan)   # 14-bit, step-free
+            return
+        kind = self.cfg["cc"].get(str(num))
+        if not kind:
+            return
+        self.fb.cc(chan, num, val)                 # reflect value (motor faders / LED rings)
+        if hr:
+            self.cc_msb.setdefault(chan, {})[num] = val   # remember MSB; the LSB (num+32) refines it
+        self._apply_cc(kind, val / 127.0, target, chan)   # 7-bit (provisional when high-res)
 
     def on_program(self, prog, target):
         progs = self.cfg.get("programs") or []
