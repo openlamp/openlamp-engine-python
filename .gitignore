@@ -1,0 +1,7 @@
+tuya-lamps.json
+__pycache__/
+
+# build artifacts
+build/
+dist/
+*.egg-info/
