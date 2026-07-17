@@ -176,3 +176,7 @@ reproduce it for well under €40 for a two-lamp stereo stage:
 ## Credits
 
 Made by **[@Beennnn](https://github.com/Beennnn)** (**[OpenLamp](https://github.com/openlamp)**) with the help of Claude. **WLED is the recommended, tested path** (validated on Athom RGBCW bulbs, ~45 ms/command). Feedback: open an issue on [engine](https://github.com/openlamp/engine/issues).
+
+---
+
+**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/wled-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/wled-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/wled-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
