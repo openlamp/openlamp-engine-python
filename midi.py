@@ -88,6 +88,11 @@ DEFAULT = {
     "highres_cc": False,
     "feedback": False,           # true -> open "OpenLamp Feedback" MIDI OUT reflecting state
     "feedback_port": "OpenLamp Feedback",
+    # real-state feedback (opt-in): subscribe to a WLED device's WebSocket (ws://<host>/ws) and
+    # reflect its ACTUAL state as MIDI on the feedback port — so external changes (the WLED app, a
+    # physical toggle, effects the device computes) also show on the controller, not just the
+    # commands the engine sent. Needs `pip install websocket-client`. host "" = disabled.
+    "feedback_wled": {"host": "", "channel": 1},
     "programs": [],              # empty -> Program Change n maps to WLED preset n+1
     "velocity_to_bri": False,    # true -> a look note-on also sets brightness from velocity
     "clock_tempo": False,        # true -> report BPM from MIDI clock as tempo:<bpm>
@@ -160,6 +165,35 @@ class Feedback:
         if self.out: self.out.send_message([0x80 | (chan - 1), note & 0x7F, 0])
     def cc(self, chan, num, val):
         if self.out: self.out.send_message([0xB0 | (chan - 1), num & 0x7F, val & 0x7F])
+
+
+class WledStateReflector:
+    """Maps a WLED /json/state object to feedback MIDI, emitting only what changed. This is the
+    testable core of real-state feedback: on/off -> util note (50/48), bri -> CC1, the primary
+    segment's colour -> CC3 hue + CC4 sat, its effect -> CC5. Independent of the WS transport."""
+    def __init__(self, fb, chan=1, fxcount=FALLBACK_FXCOUNT):
+        self.fb, self.chan, self.fxcount = fb, chan, fxcount
+        self.prev = {}
+    def reflect(self, state):
+        c = self.chan
+        on = state.get("on")
+        if on is not None and on != self.prev.get("on"):
+            self.fb.note_on(c, 50 if on else 48)         # 50 = on, 48 = off
+        bri = state.get("bri")
+        if bri is not None and bri != self.prev.get("bri"):
+            self.fb.cc(c, 1, round(bri / 255 * 127))
+        seg = (state.get("seg") or [{}])[0]
+        col = (seg.get("col") or [None])[0]
+        if col and col[:3] != self.prev.get("col"):
+            r, g, b = col[:3]
+            h, s, _ = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+            self.fb.cc(c, 3, round(h * 127))             # hue
+            self.fb.cc(c, 4, round(s * 127))             # sat
+            self.prev["col"] = col[:3]
+        fx = seg.get("fx")
+        if fx is not None and fx != self.prev.get("fx"):
+            self.fb.cc(c, 5, round(fx / max(1, self.fxcount - 1) * 127))
+        self.prev.update({"on": on, "bri": bri, "fx": fx})
 
 
 class Bridge:
@@ -576,12 +610,35 @@ def start_bridge(cfg):
     midi_in.ignore_types(timing=False)                # keep MIDI clock (0xF8)
 
     midi_out = None
-    if cfg.get("feedback"):                            # optional return port reflecting state
+    fw = cfg.get("feedback_wled", {})
+    if cfg.get("feedback") or fw.get("host"):          # open the feedback port if either wants it
         midi_out = rtmidi.MidiOut()
         midi_out.open_virtual_port(cfg.get("feedback_port", "OpenLamp Feedback"))
         br.fb = Feedback(midi_out)
         print("  feedback: MIDI OUT '%s' open (state reflected in wled-midi language)."
               % cfg.get("feedback_port", "OpenLamp Feedback"))
+
+    if fw.get("host"):                                 # real-state reflection from a WLED device
+        reflector = WledStateReflector(br.fb, fw.get("channel", 1))
+        def wled_ws_loop():
+            try:
+                import websocket                        # websocket-client
+            except Exception:
+                print("  ! feedback_wled needs: pip install websocket-client"); return
+            url = "ws://%s/ws" % fw["host"]
+            while True:
+                try:
+                    ws = websocket.create_connection(url, timeout=5)
+                    ws.send('{"v":true}')               # request the full state from WLED
+                    while True:
+                        data = json.loads(ws.recv())
+                        st = data.get("state", data)    # WLED pushes {"state":..,"info":..}
+                        if isinstance(st, dict):
+                            reflector.reflect(st)
+                except Exception as e:
+                    print("  ! WLED ws (%s) reconnecting: %s" % (url, e)); time.sleep(3)
+        threading.Thread(target=wled_ws_loop, daemon=True).start()
+        print("  feedback_wled: subscribing to ws://%s/ws (real-state reflection)" % fw["host"])
 
     def cb(event, data=None):
         msg, _ = event
