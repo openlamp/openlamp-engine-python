@@ -169,6 +169,8 @@ class BaseLamp(threading.Thread):
         self.ok = False; self.stop = False
         self.bri = 60; self.is_on = True
         self.rgb = (0, 100, 200)        # last RGB sent — used for tt/blackout/snapshot
+        self.pal = None                 # last palette the USER chose (None/0 = Default -> effects
+                                        # auto-boost to a vivid palette so they're visible)
         self.saved = None               # state saved by blackout (restore replays it)
         self._next_tt = None            # one-shot per-command fade (WLED x100 ms units) set by
                                         # "tt1:N" (a per-button fondu), else None = use config default
@@ -650,14 +652,18 @@ class TuyaLamp(BaseLamp):
         if cmd == "blackout":                              # black + remembers the prior state
             self.saved = self.tracked_state()
             self._dps(switch=False); self.is_on = False; return
-        if cmd == "restore":                               # replays the pre-blackout state
-            s = self.saved or {}
+        if cmd == "restore":                               # replays the pre-blackout state (once)
+            if not self.saved:                             # nothing pending -> no-op (was replaying a stale look)
+                return
+            s = self.saved; self.saved = None              # consume it: a stray 2nd restore does nothing
             if s.get("on", True):
                 self.bri = s.get("bri", self.bri)
                 self.rgb = tuple(s.get("rgb", self.rgb))
                 r, g, b = lamp_mod.scale(self.rgb, self.bri)
                 self._colour(r, g, b)
             return
+        if cmd in ("solide", "solid"):                     # no WLED effects on Tuya: the engine already
+            return                                         # stopped its cycle/flash anim before dispatch
         if cmd == "off":
             self._dps(switch=False); self.is_on = False; return
         if cmd == "on":
@@ -875,7 +881,9 @@ class WledLamp(BaseLamp):
             self.saved = self.tracked_state()
             self._post({"on": False}); self.is_on = False; return
         if cmd == "restore":
-            s = self.saved or {}
+            if not self.saved:                             # nothing pending -> no-op (was replaying a stale look)
+                return
+            s = self.saved; self.saved = None              # consume it: a stray 2nd restore does nothing
             if s.get("on", True):
                 self.bri = s.get("bri", self.bri)
                 self.rgb = tuple(s.get("rgb", self.rgb))
@@ -890,12 +898,18 @@ class WledLamp(BaseLamp):
         if cmd == "toggle":
             self._post(self._payload({"on": "t"}))        # "t" = native WLED toggle
             self.is_on = not self.is_on; return
+        if cmd in ("solide", "solid"):                     # stop the effect, keep the colour
+            # fx:0 = solid. No col/bri in the payload, so the current colour stays put —
+            # this is the "back to a plain fixed colour" button (Benoit 2026-07-14).
+            self._post(self._payload({"seg": [self._seg({"fx": 0})]}))
+            self.is_on = True; return
         if cmd.startswith("set:"):                         # advanced: colour + brightness
             _, cname, pct = cmd.split(":")
             r, g, b = COLORS.get(cname, COLORS["bleu"])
             self.bri = max(1, min(100, int(pct)))
             self._post(self._payload({"on": True, "bri": round(self.bri * 2.55),
-                        "seg": [self._seg({"col": [[r, g, b]]})]}))
+                        "seg": [self._seg({"col": [[r, g, b]], "fx": 0})]}))
+            self.rgb = (r, g, b)          # track the colour (snapshot/restore/sync depend on it)
             self.is_on = True; return
         if cmd.startswith("preset:"):                      # common: WLED has 250 presets
             self._post(self._payload({"ps": int(cmd.split(":")[1])}))
@@ -906,16 +920,182 @@ class WledLamp(BaseLamp):
             seg = self._seg({"fx": fx})
             for k, v in zip(("sx", "ix", "pal"), parts[1:]):
                 seg[k] = int(v)
+            if "pal" in seg:
+                self.pal = seg["pal"]                      # explicit palette -> remember the user's choice
+            elif fx != 0 and self.pal in (None, 0):
+                # Visibility fix (Benoit 2026-07-14): on the Default palette (0), most effects
+                # paint the pattern over a BLACK secondary colour -> looks dim. If the user hasn't
+                # chosen a palette, launch the effect on "Party" (6) so it bursts with colour. Any
+                # palette the user picked (dial/keys) is respected; only Default gets boosted.
+                seg["pal"] = 6
             self._post(self._payload({"on": True, "seg": [seg]}))
             self.is_on = True; return
-        if cmd.startswith("wled:psave:"):                  # save the state as preset N
-            self._post({"psave": int(cmd.split(":")[2])}); return
+        if cmd == "wled:psave:new" or cmd.startswith("wled:psave:new:"):   # save to the 1st free slot
+            used = set()
+            try:
+                pr = json.loads(urllib.request.urlopen(self._url("/presets.json"), timeout=3).read())
+                used = {int(k) for k in pr if str(k).isdigit() and int(k) > 0}
+            except Exception:
+                pass
+            slot = next((i for i in range(1, 251) if i not in used), 1)
+            # optional custom name: "wled:psave:new:My Look" (name may contain ':')
+            name = cmd.split(":", 3)[3] if cmd.count(":") >= 3 else "OpenLamp %d" % slot
+            self._post({"psave": slot, "n": name})
+            log(self.name, "preset saved ->", slot, name); return
+        if cmd.startswith("wled:psave:"):                  # save the state as preset N (optional :Name)
+            parts = cmd.split(":", 3)                       # wled : psave : N [: Name]
+            payload = {"psave": int(parts[2])}
+            if len(parts) >= 4 and parts[3]:               # name given -> label the WLED preset
+                payload["n"] = parts[3]
+            self._post(payload); return
+        if cmd.startswith("wled:sync:"):                   # WLED UDP sync (broadcast to the group)
+            v = cmd.split(":")[2]
+            if v == "toggle":
+                try:
+                    v = "off" if (self._status().get("udpn") or {}).get("send") else "on"
+                except Exception:
+                    v = "on"
+            on = (v == "on")
+            self._post({"udpn": {"send": on, "recv": on}}); return
+        if cmd.startswith("sbri:"):                        # SEGMENT brightness (vs bri: = global master)
+            pct = max(1, min(100, int(cmd.split(":")[1])))
+            self._post(self._payload({"seg": [self._seg({"bri": round(pct * 2.55)})]}))
+            self.is_on = True; return
+        if cmd.startswith(("sx:", "ix:")):                 # EFFECT speed / intensity (0-100, ~ scroll, r random)
+            key, v = cmd.split(":", 1)
+            if v == "r":
+                import random as _rnd
+                val = _rnd.randint(0, 255)                  # random (WLED has no native "r" for sx/ix)
+            else:
+                val = v if v in ("~", "~-") else round(max(0, min(100, int(v))) * 2.55)
+            self._post(self._payload({"seg": [self._seg({key: val})]})); return
+        if cmd.startswith("wled:playlist:"):               # minute-by-minute preset sequence (= preset-cycle)
+            # wled:playlist:1,2,3[@ms] — native WLED: the lamp cycles through the presets
+            # on its own (no engine thread, survives even if the plugin closes). Any other
+            # command (colour, preset:N…) interrupts the playlist.
+            body = cmd.split(":", 2)[2]
+            ids, _, ms = body.partition("@")
+            ps = [int(x) for x in ids.split(",") if x.strip()]
+            dur = max(1, int(ms or 3000) // 100)           # WLED counts in 1/10 s
+            self._post({"on": True, "playlist": {"ps": ps, "dur": [dur] * len(ps),
+                        "transition": self.c.get("transition", 7), "repeat": 0}})
+            self.is_on = True; return
         if cmd.startswith("mode:"):
             log(self.name, "(WLED) Tuya modes not applicable — use WLED presets")
             return
+        # ---- RGBCW/WLED capabilities absent from Tuya (2026-07-11) ----
+        if cmd.startswith("white:"):                       # adjustable white: dedicated W channel + CCT
+            # white:<brightness%>[:<temperature%>]  (temp 0=warm .. 100=cool).
+            # Compat with the Tuya alias white:b:t. We push everything onto the 4th
+            # channel (W) of the RGBCW bulb: clean white, not an approximate R=G=B mix.
+            parts = cmd.split(":")
+            pct = max(1, min(100, int(parts[1]))) if len(parts) > 1 and parts[1] else self.bri
+            seg = {"col": [[0, 0, 0, 255]], "fx": 0}   # fx:0 = solid (otherwise an effect masks the white)
+            if len(parts) > 2 and parts[2] != "":
+                seg["cct"] = max(0, min(255, round(int(parts[2]) * 2.55)))
+            self._post(self._payload({"on": True, "bri": round(pct * 2.55),
+                        "seg": [self._seg(seg)]}))
+            self.bri = pct; self.is_on = True; return
+        if cmd.startswith("cct:"):                          # white temperature (0=warm..100=cool)
+            v = cmd.split(":", 1)[1]
+            named = {"warm": 0, "chaud": 0, "cool": 100, "froid": 100, "neutre": 50}.get(v)
+            pct = named if named is not None else max(0, min(100, int(v)))
+            # cct only sets the TEMPERATURE of the white channel; with a saturated colour active
+            # the W channel is 0, so nothing shows. Drive W (at the current brightness) so the
+            # warmth is visible even over a colour (Benoit 2026-07-14: "chaleur devrait bouger
+            # même si une couleur est active"). fx:0 = solid so a running effect can't mask it.
+            r, g, b = self.rgb
+            w = round(self.bri * 2.55)
+            self._post(self._payload({"seg": [self._seg({"col": [[r, g, b, w]],
+                        "cct": round(pct * 2.55), "fx": 0})]}))
+            return
+        if cmd.startswith("pal:"):                          # WLED palette (71 available, combines with effects)
+            v = cmd.split(":", 1)[1]
+            pal = v if v in ("~", "~-", "r") else int(v)    # ~ = next, ~- = previous (scroll)
+            if isinstance(pal, int):
+                self.pal = pal                              # remember the user's palette (0 = Default)
+            self._post(self._payload({"seg": [self._seg({"pal": pal})]}))
+            self.is_on = True; return
+        # ---- extended WLED /json/state coverage (2026-07-11): the remaining native
+        #      fields, so every WLED capability has a friendly command (not just the
+        #      raw {json} OLS key). See PROTOCOL.md coverage table. ----
+        def _rgb(v):                                        # colour name or #rrggbb -> [r,g,b]
+            if v in COLORS: return list(COLORS[v])
+            h = v.lstrip("#")
+            return [int(h[i:i + 2], 16) for i in (0, 2, 4)] if len(h) == 6 else None
+        def _seg_now():                                     # current segment (for toggles)
+            try: return (self._status().get("seg") or [{}])[0]
+            except Exception: return {}
+        def _bool(v, cur):
+            return (not cur) if v in ("toggle", "t", "") else v in ("on", "1", "true")
+        if cmd.startswith(("col2:", "col3:")):              # secondary / tertiary colour (seg.col[1]/[2])
+            idx = 1 if cmd[3] == "2" else 2
+            rgb = _rgb(cmd.split(":", 1)[1])
+            if rgb:
+                col = [list(self.rgb), [0, 0, 0], [0, 0, 0]]
+                col[idx] = rgb
+                self._post(self._payload({"on": True, "seg": [self._seg({"col": col})]}))
+                self.is_on = True
+            return
+        if cmd.startswith(("c1:", "c2:", "c3:")):           # effect custom sliders (c3 = 0-31, else 0-255) + ~ scroll
+            key, v = cmd.split(":", 1)
+            mx = 31 if key == "c3" else 255
+            val = v if v in ("~", "~-") else round(max(0, min(100, int(v))) / 100 * mx)
+            self._post(self._payload({"seg": [self._seg({key: val})]})); return
+        if cmd.startswith(("o1:", "o2:", "o3:")):           # effect option checkboxes (bool)
+            key, v = cmd.split(":", 1)
+            self._post(self._payload({"seg": [self._seg({key: _bool(v, bool(_seg_now().get(key)))})]})); return
+        if cmd.startswith(("tt:", "transition:")):          # crossfade time (ms -> WLED 100 ms units)
+            self._post({"transition": max(0, round(int(cmd.split(":", 1)[1] or 0) / 100))}); return
+        if cmd.startswith(("rev", "mirror")):               # reverse / mirror the segment
+            fld = "rev" if cmd.startswith("rev") else "mi"
+            v = cmd.split(":", 1)[1] if ":" in cmd else "toggle"
+            self._post(self._payload({"seg": [self._seg({fld: _bool(v, bool(_seg_now().get(fld)))})]})); return
+        if cmd.startswith("freeze"):                        # freeze / unfreeze the running effect
+            v = cmd.split(":", 1)[1] if ":" in cmd else "toggle"
+            self._post(self._payload({"seg": [self._seg({"frz": _bool(v, bool(_seg_now().get("frz")))})]})); return
+        if cmd.startswith("segpow:"):                       # per-segment on/off (seg.on) vs global on/off
+            self._post(self._payload({"seg": [self._seg({"on": cmd.split(":")[1] in ("on", "1", "true")})]})); return
+        if cmd.startswith("si:"):                           # sound-simulation input for audio effects (0-3)
+            self._post(self._payload({"seg": [self._seg({"si": max(0, min(3, int(cmd.split(":")[1])))})]})); return
+        if cmd.startswith("lor:"):                          # live-data override (0 off / 1 override / 2 until reboot)
+            self._post({"lor": max(0, min(2, int(cmd.split(":")[1])))}); return
+        if cmd.startswith("mainseg:"):                      # main segment selection
+            self._post({"mainseg": int(cmd.split(":")[1])}); return
+        if cmd.startswith("syncgroup:"):                    # UDP sync send+recv group 1-8 (bitfield)
+            bit = 1 << (max(1, min(8, int(cmd.split(":")[1]))) - 1)
+            self._post({"udpn": {"send": True, "recv": True, "sgrp": bit, "rgrp": bit}}); return
+        if cmd == "random":                                 # random vivid colour (random hue)
+            import random as _rnd, colorsys as _cs
+            r, g, b = [int(x * 255) for x in _cs.hsv_to_rgb(_rnd.random(), 1.0, 1.0)]
+            self._post(self._payload({"on": True, "seg": [self._seg({"col": [[r, g, b]], "fx": 0})]}))
+            self.rgb = (r, g, b); self.is_on = True; return
+        if cmd == "nl:toggle":                              # toggle nightlight (2-state button)
+            try:
+                on = bool((self._status().get("nl") or {}).get("on"))
+            except Exception:
+                on = False
+            if on:
+                self._post({"nl": {"on": False}})
+            else:
+                self._post({"nl": {"on": True, "dur": 15, "mode": 1, "tbri": 0}})
+            return
+        if cmd.startswith(("nl:", "countdown:")):           # nightlight: fade-off over N min
+            v = cmd.split(":", 1)[1]
+            if v in ("off", "0", ""):
+                self._post({"nl": {"on": False}})           # cancels the timer
+            else:                                           # mode 1 = fade, target bri 0 = soft power-off
+                self._post({"nl": {"on": True, "dur": max(1, min(255, int(v))),
+                                   "mode": 1, "tbri": 0}})
+            return
         if cmd in COLORS:
             r, g, b = COLORS[cmd]
-            self._post(self._payload({"on": True, "seg": [self._seg({"col": [[r, g, b]]})]}))
+            # fx:0 = back to SOLID: without it, if an effect is running (fx!=0), it masks
+            # the colour -> "the colour dial/button does nothing" (observed 2026-07-11).
+            # W=0: reset the white channel so a fresh colour is clean, not tinted by a prior
+            # warmth (cct) that had lit W (Benoit 2026-07-14).
+            self._post(self._payload({"on": True, "seg": [self._seg({"col": [[r, g, b, 0]], "fx": 0})]}))
+            self.rgb = (r, g, b)          # track the colour (snapshot/restore/sync depend on it)
             self.is_on = True; return
         pct = PALIERS.get(cmd)
         if pct is None and cmd.startswith("bri:"):
@@ -1028,8 +1208,12 @@ class LocalApi(threading.Thread):
                                           "snap:<nom>", "beat:toggle", "beat:off",
                                           "beat:<link|midi>[:action[:colors[:sub]]]"],
                             "aliases": ["<couleur>", "<palier>", "bri:N", "set:c:p",
-                                         "white:b:t", "scene:nom", "preset:N",
-                                         "mode:music", "countdown:min", "wled:fx:...",
+                                         "white:pct[:temp]", "cct:0-100|warm|cool",
+                                         "pal:N", "nl:min|off", "scene:nom", "preset:N",
+                                         "mode:music", "countdown:min", "solid",
+                                         "wled:fx:fx[:sx[:ix[:pal]]]", "sbri:N",
+                                         "sx:N", "ix:N", "wled:sync:on|off|toggle",
+                                         "wled:psave:N|new", "wled:playlist:p1,p2[@ms]",
                                          "on", "off", "toggle"]}
                 elif u.path == "/status":
                     body = {l.name: {"connected": l.ok, "on": l.is_on, "bri": l.bri,
@@ -1076,6 +1260,7 @@ class Engine:
         self.lamps = []
         self.anims = {}          # lamp -> stop Event for the current animation
         self._beat_proc = None   # beatsync subprocess handle (see _start_beat)
+        self._cur_fx = 0         # effect currently running (0 = none), read by frontends
         self.on_change = None    # frontend hook, called ~1.5 s after a dispatch
         self._dirty = False
         self._lamps_lock = threading.Lock()   # discovery mutates self.lamps off-thread
@@ -1327,6 +1512,16 @@ class Engine:
         return [l for l in self.lamps if l.name in expanded]
 
     def dispatch(self, cmd, settings):
+        # Track the CURRENT effect so the frontend animates only the ONE key that
+        # represents the running effect (not every effect key -> no lag).
+        if isinstance(cmd, str):
+            if cmd.startswith("wled:fx:"):
+                _fp = cmd.split(":")
+                if len(_fp) > 2 and _fp[2].isdigit():
+                    self._cur_fx = int(_fp[2])
+            elif (cmd in lamp_mod.COLORS or cmd.startswith("set:")
+                  or cmd in ("solide", "solid", "blackout", "off", "toggle", "random", "restore")):
+                self._cur_fx = 0                          # effect cleared -> no effect key animates
         # v2 syntax: a WLED-compatible JSON state patch passes through as-is
         if isinstance(cmd, str) and cmd.startswith("{"):
             try:
