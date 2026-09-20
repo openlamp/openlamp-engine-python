@@ -3,7 +3,7 @@
 
 Opens a virtual MIDI input port (default "OpenLamp") and translates incoming MIDI into
 OpenLamp State (OLS = WLED-compatible JSON patch) commands, per the
-github.com/openlamp/wled-midi convention (v0.2). It POSTs to the engine's local API
+github.com/openlamp/openlamp-spec-midi convention (v0.2). It POSTs to the engine's local API
 (127.0.0.1:8377/cmd); the engine owns the persistent device connections.
 
 Three modes (config "mode"):

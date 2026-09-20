@@ -24,9 +24,9 @@ classifiers = [
 dependencies = ["tinytuya>=1.13"]
 
 [project.urls]
-Homepage = "https://github.com/openlamp/engine"
-Source = "https://github.com/openlamp/engine"
-Issues = "https://github.com/openlamp/engine/issues"
+Homepage = "https://github.com/openlamp/openlamp-engine-python"
+Source = "https://github.com/openlamp/openlamp-engine-python"
+Issues = "https://github.com/openlamp/openlamp-engine-python/issues"
 "OpenLamp umbrella" = "https://github.com/openlamp"
 
 # The CLI command. Config lookup: $OPENLAMP_LAMPS, then ~/.config/openlamp/tuya-lamps.json.
