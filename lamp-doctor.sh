@@ -9,8 +9,13 @@
 CFG="$(cd "$(dirname "$0")" && pwd)/tuya-lamps.json"
 PY=/usr/bin/python3
 SSID=$($PY -c "import json;print(json.load(open('$CFG')).get('router',{}).get('ssid','YOUR-WIFI'))")
-HOST=$($PY -c "import json;print(json.load(open('$CFG')).get('router',{}).get('host','192.168.8.1'))")
-KEY=$(eval echo $($PY -c "import json;print(json.load(open('$CFG')).get('router',{}).get('ssh_key','~/.ssh/id_ed25519_mango'))"))
+HOST=$($PY -c "import json;print(json.load(open('$CFG')).get('router',{}).get('host',''))")
+KEY=$(eval echo $($PY -c "import json;print(json.load(open('$CFG')).get('router',{}).get('ssh_key',''))"))
+if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+  echo "✖ [router].host et [router].ssh_key manquent dans $CFG"
+  echo "  → les deviner reviendrait à sonder le réseau de quelqu'un d'autre : on s'arrête."
+  exit 1
+fi
 MACS=$($PY -c "import json;print(' '.join(l['mac'] for l in json.load(open('$CFG'))['lamps'] if l.get('mac')))")
 
 echo "— cause 2 d'abord (la plus structurante) : le Mango émet-il ?"

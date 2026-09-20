@@ -68,7 +68,7 @@ JSON — one entry per lamp:
 {
   "name": "L1",
   "mac": "d8:c8:0c:xx:xx:xx",
-  "device_id": "bf0553cce7e28685bdrunt",
+  "device_id": "PASTE_THE_DEVICE_ID_HERE",
   "local_key": "PASTE_THE_KEY_HERE",
   "ips": { "192.168.1": "192.168.1.27" }
 }
