@@ -41,6 +41,14 @@ else:
 # path; otherwise the files bundled next to the plugin/script are used.
 _EXT = os.path.expanduser(os.environ.get("OPENLAMP_LAMPS_DIR", ""))
 LAMPS_DIR = _EXT if (_EXT and os.path.isdir(_EXT)) else _FALLBACK
+
+# The label written into WLED when a preset is saved without a name. A downstream
+# product embeds this engine and puts its OWN name in front of the user: hard-coding
+# one here would rebrand someone else's product on their own lamps. Same reasoning as
+# OPENLAMP_LAMPS_DIR — what belongs to an installation is read, never assumed.
+PRESET_LABEL = os.environ.get("OPENLAMP_PRESET_LABEL", "OpenLamp %d")
+
+
 CONFIG = os.path.join(LAMPS_DIR, "tuya-lamps.json")
 LOGFILE = os.path.expanduser("~/Library/Logs/ElgatoStreamDeck/com.openlamp.lamps.log")
 
@@ -939,7 +947,7 @@ class WledLamp(BaseLamp):
                 pass
             slot = next((i for i in range(1, 251) if i not in used), 1)
             # optional custom name: "wled:psave:new:My Look" (name may contain ':')
-            name = cmd.split(":", 3)[3] if cmd.count(":") >= 3 else "OpenLamp %d" % slot
+            name = cmd.split(":", 3)[3] if cmd.count(":") >= 3 else PRESET_LABEL % slot
             self._post({"psave": slot, "n": name})
             log(self.name, "preset saved ->", slot, name); return
         if cmd.startswith("wled:psave:"):                  # save the state as preset N (optional :Name)
