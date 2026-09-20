@@ -177,6 +177,17 @@ class BaseLamp(threading.Thread):
         # photo of the engine-side tracked state (snapshots, blackout/restore)
         return {"on": self.is_on, "bri": self.bri, "rgb": list(self.rgb)}
 
+    def snapshot_state(self):
+        # state captured by a snapshot; drivers enrich it (cf WledLamp, which
+        # adds RGBW colour + white temperature + effect + palette).
+        return self.tracked_state()
+
+    def snapshot_patch(self, s):
+        # recall patch for a snapshot (None = do nothing). Base = on/colour/bri.
+        if not s.get("on", True):
+            return {"on": False}
+        return {"on": True, "col": s.get("rgb"), "bri": round(s.get("bri", 60) * 2.55)}
+
     def _post_exec_verify(self):
         pass                                   # TuyaLamp override: colour verify
 
@@ -292,7 +303,7 @@ class BaseLamp(threading.Thread):
                 continue
             if isinstance(cmd, tuple) and cmd and cmd[0] == "__snap__":
                 _, holder, ev = cmd                        # photo AFTER the queue (FIFO)
-                holder[self.name] = self.tracked_state()  # driver-specific (WLED = full state)
+                holder[self.name] = self.snapshot_state()  # driver-specific (WLED = full state)
                 ev.set()
                 continue
             # per-button fondu: "tt1:N" (ms) arms a ONE-SHOT transition for the NEXT
@@ -792,6 +803,32 @@ class WledLamp(BaseLamp):
         if segs and segs[0].get("col"):
             self.rgb = tuple(segs[0]["col"][0][:3])
 
+    def snapshot_state(self):
+        # WLED tells the truth: we photograph the FULL PHYSICAL state (RGBW colour
+        # with the white channel, white temperature, effect, palette) so the recall
+        # reproduces the ambiance exactly — not just on/bri/rgb (cf fixed limitation).
+        try:
+            st = self._status()
+        except Exception:
+            return self.tracked_state()          # network blip: fall back on engine tracking
+        seg = (st.get("seg") or [{}])[0]
+        col = (seg.get("col") or [[0, 0, 0, 0]])[0]
+        return {"on": bool(st.get("on", True)),
+                "bri": max(1, min(100, round(st.get("bri", 128) / 2.55))),
+                "rgb": list(col[:3]),            # compat old readers (Tuya, UI)
+                "col": list(col[:4]),            # full RGBW (dedicated white included)
+                "cct": seg.get("cct", 0),
+                "fx": seg.get("fx", 0),
+                "pal": seg.get("pal", 0)}
+
+    def snapshot_patch(self, s):
+        # FLAT patch (v2 syntax): _apply itself places col/cct/fx/pal into seg.
+        if not s.get("on", True):
+            return {"on": False}
+        return {"on": True, "bri": round(s.get("bri", 60) * 2.55),
+                "col": list(s.get("col") or s.get("rgb") or [0, 0, 0]),
+                "cct": s.get("cct", 0), "fx": s.get("fx", 0), "pal": s.get("pal", 0)}
+
     def _seg(self, seg):
         # config "segment": N -> this plugin "lamp" only drives one zone of the strip
         if "segment" in self.c:
@@ -815,7 +852,7 @@ class WledLamp(BaseLamp):
         for k in ("fx", "sx", "ix", "pal", "cct"):
             if k in st: seg[k] = st[k]
         if st.get("col"):
-            seg["col"] = [list(st["col"][:3])]     # RGBW: keeps the dedicated white W channel if provided
+            seg["col"] = [list(st["col"][:4])]     # RGBW: keeps the dedicated white W channel if provided
         if seg:
             p["seg"] = [self._seg(seg)]
         if not p:
@@ -1325,11 +1362,9 @@ class Engine:
                 s = snap.get(l.name)
                 if not s:
                     continue
-                if s.get("on", True):
-                    l.q.put({"on": True, "col": s.get("rgb"),
-                             "bri": round(s.get("bri", 60) * 2.55)})
-                else:
-                    l.q.put({"on": False})
+                patch = l.snapshot_patch(s)                 # driver-specific (WLED restores RGBW+cct+fx+pal)
+                if patch:
+                    l.q.put(patch)
             return bool(tgts) and all(l.ok for l in tgts)
         # beat-sync: supervises the external beatsync helper (see _start_beat)
         if isinstance(cmd, str) and (cmd == "beat" or cmd.startswith("beat:")):
