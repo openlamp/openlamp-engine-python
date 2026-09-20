@@ -132,7 +132,7 @@ def mango_deauth(mac, cfg):
     """Anti-zombie niveau 1 : deassocie la lampe du Wi-Fi via SSH OpenWrt sur le
     routeur (GL.iNet). Elle se re-associe et sa pile IP repart — l'equivalent d'un
     debranche/rebranche RESEAU, sans toucher la lampe. Actif si la config contient
-    "router": {"host": "192.168.8.1", "ssh_key": "~/.ssh/id_ed25519_mango"}
+    "router": {"host": "<ip-du-routeur>", "ssh_key": "~/.ssh/<ta-cle>"}
     (cle publique a installer dans le routeur : LuCI > System > Administration).
     Throttle 3 min par lampe : marteler la deauth aggraverait le cas."""
     r = (cfg or {}).get("router") or {}
@@ -727,7 +727,7 @@ class WledLamp(BaseLamp):
       la capture tcpdump a 22h).
     Une commande WLED tient en une ligne : POST {"seg":[{"col":[[255,0,0]]}]}.
 
-    Config : {"name": "L1", "type": "wled", "host": "192.168.8.50"} — host = IP OU
+    Config : {"name": "L1", "type": "wled", "host": "<ip-de-la-lampe>"} — host = IP OU
     hostname mDNS (ex "wled-abc123.local"). Options : "segment": N (zone du ruban),
     "transition": N (fondu x100 ms par commande)."""
 

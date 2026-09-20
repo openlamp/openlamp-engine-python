@@ -8,7 +8,7 @@ starts dropping them; WLED firmware crashes an ESP past a handful, which is why 
 stage tools rate-limit). stdlib only, no deps.
 
     lamp-bench.py                      # read the config, probe every WLED lamp (safe)
-    lamp-bench.py 192.168.8.128        # probe a lamp by IP/host directly
+    lamp-bench.py 192.0.2.10        # probe a lamp by IP/host directly
     lamp-bench.py --pings 40           # more latency samples
     lamp-bench.py --ceiling            # ALSO find the command ceiling (stresses the lamp)
     lamp-bench.py --check              # ALSO run a conformance check (write → read back)
