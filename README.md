@@ -2,7 +2,7 @@
 
 The **core layer** of the OpenLamp family: instant, 100% local control of smart LED
 lamps (**WLED** recommended, Tuya also supported), exposed through a stable command contract —
-**OpenLamp State (OLS)**, a WLED-compatible JSON state patch (see [OLS.md](OLS.md)).
+**OpenLamp State (OLS)**, a WLED-compatible JSON state patch (see [OLS.md](https://github.com/openlamp/openlamp-spec-state)).
 
 [![PyPI — openlamp-lamp](https://img.shields.io/pypi/v/openlamp-lamp?label=openlamp-lamp&color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/openlamp-lamp/)
 
@@ -80,7 +80,7 @@ OpenLamp daemon is running, the CLI routes through its local API
 - **`app.py`** + **`packaging/`** — the **headless desktop app**: one process running the engine
   + the OpenLamp MIDI bridge, with an optional tray, bundled by PyInstaller into a `.app`/`.exe`.
   See [Desktop app](#desktop-app-headless-no-install).
-- **`OLS.md`** — the OpenLamp State contract. **`TUYA-KEYS.md`** — how to get your
+- **[the OpenLamp State spec](https://github.com/openlamp/openlamp-spec-state)** — the OpenLamp State contract. **`TUYA-KEYS.md`** — how to get your
   lamps' local keys (official Tuya cloud API, one-time).
 
 ## Desktop app (headless, no-install)
