@@ -11,15 +11,15 @@ Part of the [OpenLamp](https://github.com/openlamp/openlamp) family:
 | Layer | Repo | Role |
 |---|---|---|
 | Engine (this repo) | `openlamp/engine` | drivers + dispatcher + local API + daemon + CLI (Python reference) |
-| Engine, JS port | [engine-js](https://github.com/openlamp/engine-js) | same contract on Node/tuyapi — for JS-first environments |
-| Ableton Live frontend | [live](https://github.com/openlamp/live) | drive lamps from a Live set (emits the wled-midi convention) |
-| MIDI convention | [wled-midi](https://github.com/openlamp/wled-midi) | the MIDI↔WLED spec this engine implements (see `midi.py`) |
-| Ableton Link / tempo | [openlamp-midi](https://github.com/openlamp/midi) | beat / tempo follow (beatsync) |
+| Engine, JS port | [engine-js](https://github.com/openlamp/openlamp-engine-node) | same contract on Node/tuyapi — for JS-first environments |
+| Ableton Live frontend | [live](https://github.com/openlamp/openlamp-pack-ableton) | drive lamps from a Live set (emits the wled-midi convention) |
+| MIDI convention | [wled-midi](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec this engine implements (see `midi.py`) |
+| Ableton Link / tempo | [openlamp-midi](https://github.com/openlamp/openlamp-lib-beatsync) | beat / tempo follow (beatsync) |
 
 ## MIDI control
 
 The engine is the **reference implementation of the
-[wled-midi](https://github.com/openlamp/wled-midi) convention**. Run
+[wled-midi](https://github.com/openlamp/openlamp-spec-midi) convention**. Run
 [`midi.py`](midi.py) to open a virtual MIDI input port (default `OpenLamp`) and drive
 the lamps from any DAW or controller — notes → colours, CC → brightness/effects,
 Program Change → presets, MIDI clock → tempo:
@@ -28,7 +28,7 @@ Program Change → presets, MIDI clock → tempo:
 python3 midi.py            # opens the "OpenLamp" virtual MIDI port
 ```
 
-Any frontend that speaks the convention works: [Ableton](https://github.com/openlamp/live),
+Any frontend that speaks the convention works: [Ableton](https://github.com/openlamp/openlamp-pack-ableton),
 the Stream Deck **MIDI** plugin (`se.trevligaspel.midi`, for scripted sequences), or a
 hardware pad/fader controller. (This replaces the old `openlamp-midi`
 bridge — the MIDI control path now lives here; `openlamp-midi` keeps the Ableton Link
@@ -105,7 +105,7 @@ The **build is free** and the unsigned bundle runs for personal use (right-click
 
 The engine carries **no Ableton Link / aalink code** and never links it. Beat-sync from
 an [Ableton Link](https://github.com/Ableton/link) session is handled by a **separate
-process** — [`openlamp-midi`](https://github.com/openlamp/midi) (`beatsync.py`) — which
+process** — [`openlamp-midi`](https://github.com/openlamp/openlamp-lib-beatsync) (`beatsync.py`) — which
 reaches the engine **only** over this local HTTP API on `127.0.0.1:8377` (`/cmd`,
 `/status`).
 
@@ -114,7 +114,7 @@ binding [aalink](https://pypi.org/project/aalink/) is **GPLv3**, that separation
 combined-work lives entirely inside the `openlamp-midi` process. The engine is a genuinely separate
 program communicating over HTTP, so it stays under its own permissive license and the GPL obligation
 does not propagate to it. Full write-up in the [`openlamp-midi`
-README](https://github.com/openlamp/midi#architecture--the-ableton-link--gpl-boundary).
+README](https://github.com/openlamp/openlamp-lib-beatsync#architecture--the-ableton-link--gpl-boundary).
 
 ## One host at a time — the rule
 
@@ -176,8 +176,8 @@ reproduce it for well under €40 for a two-lamp stereo stage:
 
 ## Credits
 
-Made by **[@Beennnn](https://github.com/Beennnn)** (**[OpenLamp](https://github.com/openlamp)**) with the help of Claude. **WLED is the recommended, tested path** (validated on Athom RGBCW bulbs, ~45 ms/command). Feedback: open an issue on [engine](https://github.com/openlamp/engine/issues).
+Made by **[@Beennnn](https://github.com/Beennnn)** (**[OpenLamp](https://github.com/openlamp)**) with the help of Claude. **WLED is the recommended, tested path** (validated on Athom RGBCW bulbs, ~45 ms/command). Feedback: open an issue on [engine](https://github.com/openlamp/openlamp-engine-python/issues).
 
 ---
 
-**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/wled-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/wled-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/wled-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
+**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/openlamp-spec-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/openlamp-spec-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
