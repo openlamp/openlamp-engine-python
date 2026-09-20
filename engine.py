@@ -1445,10 +1445,14 @@ class Engine:
             return list(bc["cmd"])
         if importlib.util.find_spec("beatsync"):
             return [sys.executable, "-m", "beatsync"]
-        sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "..", "midi", "beatsync.py")
-        if os.path.exists(sibling):
-            return [sys.executable, os.path.abspath(sibling)]
+        # sibling checkout: the repo is openlamp-lib-beatsync since the OpenLamp split.
+        # "midi" is the pre-split directory name, kept as a fallback because trying a
+        # second path costs nothing and an old working copy still resolves.
+        here = os.path.dirname(os.path.abspath(__file__))
+        for rel in ("openlamp-lib-beatsync", "midi"):
+            sibling = os.path.join(here, "..", rel, "beatsync.py")
+            if os.path.exists(sibling):
+                return [sys.executable, os.path.abspath(sibling)]
         log("beat: beatsync not found — `pip install \"openlamp-midi[link]\"` "
             "or set cfg beat.cmd")
         return None
