@@ -12,14 +12,14 @@ Part of the [OpenLamp](https://github.com/openlamp/openlamp) family:
 |---|---|---|
 | Engine (this repo) | `openlamp/engine` | drivers + dispatcher + local API + daemon + CLI (Python reference) |
 | Engine, JS port | [engine-js](https://github.com/openlamp/openlamp-engine-node) | same contract on Node/tuyapi — for JS-first environments |
-| Ableton Live frontend | [live](https://github.com/openlamp/openlamp-pack-ableton) | drive lamps from a Live set (emits the wled-midi convention) |
-| MIDI convention | [wled-midi](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec this engine implements (see `midi.py`) |
+| Ableton Live frontend | [live](https://github.com/openlamp/openlamp-pack-ableton) | drive lamps from a Live set (emits OpenLamp MIDI) |
+| MIDI convention | [OpenLamp MIDI](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec this engine implements (see `midi.py`) |
 | Ableton Link / tempo | [openlamp-midi](https://github.com/openlamp/openlamp-lib-beatsync) | beat / tempo follow (beatsync) |
 
 ## MIDI control
 
 The engine is the **reference implementation of the
-[wled-midi](https://github.com/openlamp/openlamp-spec-midi) convention**. Run
+[OpenLamp MIDI](https://github.com/openlamp/openlamp-spec-midi) convention**. Run
 [`midi.py`](midi.py) to open a virtual MIDI input port (default `OpenLamp`) and drive
 the lamps from any DAW or controller — notes → colours, CC → brightness/effects,
 Program Change → presets, MIDI clock → tempo:
@@ -78,14 +78,14 @@ OpenLamp daemon is running, the CLI routes through its local API
   write commands and read them back). stdlib only. `lamp-bench.py <ip>`.
 - **`com.openlamp.daemon.plist`** — launchd autostart for the daemon.
 - **`app.py`** + **`packaging/`** — the **headless desktop app**: one process running the engine
-  + the wled-midi bridge, with an optional tray, bundled by PyInstaller into a `.app`/`.exe`.
+  + the OpenLamp MIDI bridge, with an optional tray, bundled by PyInstaller into a `.app`/`.exe`.
   See [Desktop app](#desktop-app-headless-no-install).
 - **`OLS.md`** — the OpenLamp State contract. **`TUYA-KEYS.md`** — how to get your
   lamps' local keys (official Tuya cloud API, one-time).
 
 ## Desktop app (headless, no-install)
 
-`app.py` runs the engine + the wled-midi MIDI bridge in one process (tray optional). Build a
+`app.py` runs the engine + the OpenLamp MIDI bridge in one process (tray optional). Build a
 distributable bundle:
 
 ```sh
@@ -180,4 +180,4 @@ Made by **[@Beennnn](https://github.com/Beennnn)** (**[OpenLamp](https://github.
 
 ---
 
-**Two open standards, one bridge.** This implements the open [**wled-midi**](https://github.com/openlamp/openlamp-spec-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/openlamp-spec-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).
+**Two open standards, one bridge.** This implements the open [**OpenLamp MIDI**](https://github.com/openlamp/openlamp-spec-midi) convention — the agreed dictionary between [**MIDI**](https://midi.org) (the MIDI Association) and [**WLED**](https://kno.wled.ge). Free for anyone to build on: see the convention's [openness & patent policy](https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md) (§14) and the [licensing note](https://github.com/openlamp/openlamp-spec-midi/blob/main/docs/licensing.md). Part of [OpenLamp](https://github.com/openlamp).

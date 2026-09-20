@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenLamp MIDI — reference implementation of the wled-midi spec, in the engine.
+"""OpenLamp MIDI — the reference implementation of the spec, in the engine.
 
 Opens a virtual MIDI input port (default "OpenLamp") and translates incoming MIDI into
 OpenLamp State (OLS = WLED-compatible JSON patch) commands, per the
@@ -17,14 +17,14 @@ Three modes (config "mode"):
     "interpolate" (note range proportional to the strip), "keymap" (piano-aligned via
     LEDs-per-key), "direct" (note = LED index), "zone" (hold notes -> light the LED RANGE
     between the lowest and highest held note, in the channel's colour — split-zone display).
-    See wled-midi SPEC §13 "strip mode".
+    See OpenLamp MIDI SPEC §13 "strip mode".
     Prior art (attribution, not affiliation): the LEDs-per-key note->LED alignment is the
     idea established by onlaj's Piano-LED-Visualizer (github.com/onlaj/Piano-LED-Visualizer),
     the reference open-source piano->WS2812 project. We reuse that idea and name the origin;
     onlaj is not affiliated with this project and has not reviewed or endorsed it.
   - "mpe" — CHANNEL = a per-note voice: play the lamps expressively. Note-on lights a
     voice (pitch -> base hue), channel pressure -> brightness, CC74 slide -> saturation,
-    pitch-bend -> hue shift. See wled-midi SPEC "mpe mode".
+    pitch-bend -> hue shift. See OpenLamp MIDI SPEC "mpe mode".
 
 Lamp-mode model (the default config of the spec's unified syntax; see SPEC_VERSION):
   - CHANNEL = a lamp group/target (1-16 per port; channel 1 = "all").
@@ -38,7 +38,7 @@ Lamp-mode model (the default config of the spec's unified syntax; see SPEC_VERSI
   - MIDI CLOCK derives tempo.
 
 Feedback (optional, config "feedback"): opens a virtual MIDI OUTPUT port "OpenLamp Feedback"
-that reflects state back in the SAME wled-midi language — so a control surface lights its pad
+that reflects state back in the SAME OpenLamp MIDI language — so a control surface lights its pad
 LEDs / moves its faders to match. A look note-on echoes that look (and a note-off of the
 previously-active look on that channel, so exactly one look shows as "on"); util on/off and
 CC 1-8 echo too. Route this port back into your controller (or Bome) to map it to LEDs.
@@ -59,7 +59,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(HERE, "midi-mapping.json")
 API = "http://127.0.0.1:8377"
 
-# Fallbacks when the device's fxcount/palcount aren't known (wled-midi SPEC §5).
+# Fallbacks when the device's fxcount/palcount aren't known (OpenLamp MIDI SPEC §5).
 FALLBACK_FXCOUNT = 118
 FALLBACK_PALCOUNT = 71
 
@@ -105,7 +105,7 @@ DEFAULT = {
     # high-res CC (opt-in): ingest 14-bit values from MSB+LSB pairs (CC N + CC N+32, the
     # standard MIDI-1.0 high-resolution scheme most DAWs emit) for step-free fades — 16384
     # levels instead of 128. The true MIDI-2.0 UMP 32-bit path is a future profile (needs a
-    # UMP transport; rtmidi is MIDI 1.0). See wled-midi SPEC §11.
+    # UMP transport; rtmidi is MIDI 1.0). See OpenLamp MIDI SPEC §11.
     "highres_cc": False,
     "feedback": False,           # true -> open "OpenLamp Feedback" MIDI OUT reflecting state
     "feedback_port": "OpenLamp Feedback",
@@ -127,7 +127,7 @@ DEFAULT = {
     # "lamp" (default, channel = lamp group; "group" is accepted as an alias), "strip"
     # (note -> LED position) or "mpe" (channel = per-note voice).
     "mode": "lamp",
-    # strip mode — note pitch -> LED position (wled-midi SPEC §13). The lo/hi/lpk/firstnote
+    # strip mode — note pitch -> LED position (OpenLamp MIDI SPEC §13). The lo/hi/lpk/firstnote
     # values are CALIBRATION: measure your own strip once (dense strips have no physical
     # 1-LED-per-key; software maps notes onto pixels). Defaults assume an 88-key range
     # (A0=21 .. C8=108) on a ~176-px strip (144 LED/m over ~1.22 m).
@@ -176,7 +176,7 @@ def send(cmd, lamps):
 
 
 class Feedback:
-    """Reflects state back out a MIDI OUT port, in the wled-midi language, so a control
+    """Reflects state back out a MIDI OUT port, in the OpenLamp MIDI language, so a control
     surface can mirror it (pad LEDs / faders). No-op when no port is configured."""
     def __init__(self, out):
         self.out = out
@@ -346,7 +346,7 @@ class Bridge:
     def on_program(self, prog, target):
         progs = self.cfg.get("programs") or []
         if not progs:
-            send('{"ps":%d}' % (prog + 1), target)    # wled-midi core: PC n -> preset n+1
+            send('{"ps":%d}' % (prog + 1), target)    # OpenLamp MIDI core: PC n -> preset n+1
             return
         if not (0 <= prog < len(progs)):
             return
@@ -636,7 +636,7 @@ def start_bridge(cfg):
         midi_out = rtmidi.MidiOut()
         midi_out.open_virtual_port(cfg.get("feedback_port", "OpenLamp Feedback"))
         br.fb = Feedback(midi_out)
-        print("  feedback: MIDI OUT '%s' open (state reflected in wled-midi language)."
+        print("  feedback: MIDI OUT '%s' open (state reflected in OpenLamp MIDI language)."
               % cfg.get("feedback_port", "OpenLamp Feedback"))
 
     if fw.get("host"):                                 # real-state reflection from a WLED device

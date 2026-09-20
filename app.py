@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OpenLamp desktop app — headless launcher.
 
-Runs the engine daemon (lamp connections + local API on 127.0.0.1:8377) AND the wled-midi
+Runs the engine daemon (lamp connections + local API on 127.0.0.1:8377) AND the OpenLamp MIDI
 MIDI bridge (virtual `OpenLamp` port → lamps) in ONE process, with an optional system-tray
 status icon. No Stream Deck, no terminal, no Python install for the end user — this is the
 entry point PyInstaller bundles into a signed/notarised `.app` / `.exe`.

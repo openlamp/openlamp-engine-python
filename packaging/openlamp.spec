@@ -1,4 +1,4 @@
-# PyInstaller spec — bundle the OpenLamp engine + wled-midi bridge into one headless app.
+# PyInstaller spec — bundle the OpenLamp engine + OpenLamp MIDI bridge into one headless app.
 #
 # Build:  pyinstaller packaging/openlamp.spec   (run from the repo root)
 # Output: dist/OpenLamp.app (macOS) / dist/OpenLamp/ (Windows).

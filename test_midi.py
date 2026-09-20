@@ -3,7 +3,7 @@
 
 Stubs the native `rtmidi` import, then feeds MIDI messages through Bridge.dispatch
 while capturing the OLS/WLED commands it would POST. Asserts the emitted JSON matches
-the wled-midi convention (group mode + MPE mode).
+the OpenLamp MIDI spec (group mode + MPE mode).
 
 Run:  python3 test_midi.py
 """
