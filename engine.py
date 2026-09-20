@@ -891,6 +891,27 @@ class WledLamp(BaseLamp):
 def make_lamp(conf, state):
     return WledLamp(conf, state) if conf.get("type") == "wled" else TuyaLamp(conf, state)
 
+def discover_wled(subnets=None, timeout=0.4, workers=48):
+    """'Broadcast' discovery of WLED lamps: HTTP scan of the local subnets
+    (GET /json/info) -> zero manual config. stdlib only, cross-platform. We scan
+    ONLY the subnets where the Mac is present (lamp_mod.local_subnets)."""
+    import concurrent.futures
+    subs = subnets if subnets is not None else lamp_mod.local_subnets()
+    found = {}
+    def probe(ip):
+        try:
+            info = json.loads(urllib.request.urlopen("http://%s/json/info" % ip, timeout=timeout).read())
+        except Exception:
+            return
+        # WLED signature: 'ver' field + (leds or brand). Avoids false positives.
+        if info.get("ver") and (info.get("leds") or info.get("brand")):
+            found[ip] = {"name": info.get("name") or "WLED", "host": ip,
+                         "type": "wled", "mac": info.get("mac", "")}
+    ips = ["%s.%d" % (s, i) for s in subs for i in range(1, 255)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        list(ex.map(probe, ips))
+    return list(found.values())
+
 class LocalApi(threading.Thread):
     """LOCAL entry point of the plugin (architecture principle, 2026-07-03).
 
@@ -988,6 +1009,9 @@ class LocalApi(threading.Thread):
                             ev.wait(8)
                         for n, dps in holder.items():
                             body.setdefault(n, {})["dps"] = dps
+                elif u.path == "/discover":
+                    added = plugin.discover_now()
+                    body = {"added": added, "lamps": [l.name for l in plugin.lamps]}
                 else:
                     self.send_response(404); self.end_headers(); return
                 data = json.dumps(body).encode()
@@ -1017,10 +1041,63 @@ class Engine:
         self._beat_proc = None   # beatsync subprocess handle (see _start_beat)
         self.on_change = None    # frontend hook, called ~1.5 s after a dispatch
         self._dirty = False
+        self._lamps_lock = threading.Lock()   # discovery mutates self.lamps off-thread
         self._start_lamps()
         LocalApi(self).start()   # entry point CLI / MIDI / Bome / other frontends
         threading.Thread(target=self._saver, daemon=True).start()
         threading.Thread(target=self._wifi_keepalive, daemon=True).start()
+        # network (broadcast) discovery enabled by default -> no mandatory manual
+        # config: the network's WLED lamps are added automatically at startup.
+        self.discover = self.cfg.get("discover", True)
+        threading.Thread(target=self._discover_startup, daemon=True).start()
+
+    def _discover_startup(self):
+        time.sleep(2)            # let the global setting (SD) arrive and be able to disable
+        if self.discover:
+            self.discover_now(quiet=True)
+
+    def discover_now(self, quiet=False):
+        """Scans the network and ADDS the WLED lamps missing from the list (dedup by host/mac).
+        Lamp name = the device's WLED name (e.g. 'OpenLamp L1')."""
+        try:
+            found = discover_wled()
+        except Exception as e:
+            log("discovery: error", e); return 0
+        added = 0
+        # normalise MACs: config stores "10:00:3B:..", WLED /json/info returns "10003b.." —
+        # comparing raw strings never matched, so discovery kept re-adding the SAME lamp as a
+        # duplicate "L1 (86)" (Benoit 2026-07-15). Strip separators on both sides.
+        nmac = lambda m: (m or "").lower().replace(":", "").replace("-", "")
+        with self._lamps_lock:
+            have = {(l.c.get("host") or "").lower() for l in self.lamps}
+            by_mac = {nmac(l.c.get("mac")): l for l in self.lamps if l.c.get("mac")}
+            names = {l.name for l in self.lamps}
+            for d in found:
+                if d["host"].lower() in have:
+                    continue
+                m = nmac(d.get("mac"))
+                if m and m in by_mac:                      # SAME physical lamp (mac) at a NEW ip -> follow it
+                    lamp = by_mac[m]                        # (roam-proof, and no mDNS latency). Update the
+                    if (lamp.c.get("host") or "").lower() != d["host"].lower():   # config host + persist.
+                        lamp.c["host"] = d["host"]; self._dirty = True
+                        have.add(d["host"].lower())
+                        log("discovery: ~", lamp.name, "moved to", d["host"])
+                    continue
+                name = d["name"] or d["host"]
+                if name in names:                      # disambiguate identical names
+                    name = "%s (%s)" % (name, d["host"].split(".")[-1])
+                conf = {"name": name, "type": "wled", "host": d["host"]}
+                if d.get("mac"):
+                    conf["mac"] = d["mac"]
+                lamp = make_lamp(conf, self.state)
+                lamp.engine = self
+                self.lamps.append(lamp); lamp.start()
+                names.add(name); have.add(d["host"].lower())
+                added += 1
+                log("discovery: +", name, "@", d["host"])
+        if added and not quiet:
+            log("discovery:", added, "lamp(s) added")
+        return added
 
     def _wifi_keepalive(self):
         """Anti-aging network heartbeat (2026-07-04 18h): the router's MTK driver
