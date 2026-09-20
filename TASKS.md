@@ -1,4 +1,4 @@
-# TASKS — openlamp-engine
+# TASKS — openlamp-engine-python
 
 - 🔄 **Packager le moteur en appli desktop no-install** (`.app` macOS + `.exe` Windows ; tray ; **signée + notarisée** ; **headless**) → enlève la seule vraie barrière du chemin universel (« lancer un process Python »). **Tier 1 accessibilité** (principe « accessible à tous d'abord », cf. [openlamp/live DESIGN.md](https://github.com/openlamp/openlamp-pack-ableton/blob/main/docs/DESIGN.md)). Scope **headless-only** (statut + config des lampes uniquement, pas de surface de contrôle riche).
   - ✅ **Scaffold en place** : `app.py` (launcher combiné = `engine.Engine()` + pont MIDI `start_bridge()` dans UN process + tray pystray optionnel) ; `midi.py` refactoré (`start_bridge()` non-bloquant, réutilisable, testé) ; `packaging/openlamp.spec` (PyInstaller, `.app` LSUIElement/tray-only) + `packaging/build.sh` + `packaging/SIGNING.md`.

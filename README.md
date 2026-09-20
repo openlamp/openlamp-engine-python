@@ -11,7 +11,7 @@ Part of the [OpenLamp](https://github.com/openlamp/openlamp) family:
 | Layer | Repo | Role |
 |---|---|---|
 | Engine (this repo) | `openlamp/engine` | drivers + dispatcher + local API + daemon + CLI (Python reference) |
-| Engine, JS port | [engine-js](https://github.com/openlamp/openlamp-engine-node) | same contract on Node/tuyapi — for JS-first environments |
+| Engine, JS port | [openlamp-engine-node](https://github.com/openlamp/openlamp-engine-node) | same contract on Node/tuyapi — for JS-first environments |
 | Ableton Live frontend | [live](https://github.com/openlamp/openlamp-pack-ableton) | drive lamps from a Live set (emits OpenLamp MIDI) |
 | MIDI convention | [OpenLamp MIDI](https://github.com/openlamp/openlamp-spec-midi) | the MIDI↔WLED spec this engine implements (see `midi.py`) |
 | Ableton Link / tempo | [openlamp-midi](https://github.com/openlamp/openlamp-lib-beatsync) | beat / tempo follow (beatsync) |
