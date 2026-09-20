@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""OpenLamp MIDI — reference implementation of the wled-midi convention, in the engine.
+"""OpenLamp MIDI — reference implementation of the wled-midi spec, in the engine.
 
 Opens a virtual MIDI input port (default "OpenLamp") and translates incoming MIDI into
 OpenLamp State (OLS = WLED-compatible JSON patch) commands, per the
-github.com/openlamp/openlamp-spec-midi convention (v0.2). It POSTs to the engine's local API
+github.com/openlamp/openlamp-spec-midi spec. It POSTs to the engine's local API
 (127.0.0.1:8377/cmd); the engine owns the persistent device connections.
+
+Which revision of that spec this file implements is stated ONCE, in SPEC_VERSION
+below — nowhere else in this module, and never in a docstring or a printed
+message. SPEC.md in that repo is the source of truth for the spec itself.
 
 Three modes (config "mode"):
   - "lamp" (default; alias "group") — CHANNEL = a lamp group; NOTES/CC/PC as below. MIDI-1.0-native.
@@ -22,7 +26,7 @@ Three modes (config "mode"):
     voice (pitch -> base hue), channel pressure -> brightness, CC74 slide -> saturation,
     pitch-bend -> hue shift. See wled-midi SPEC "mpe mode".
 
-Lamp-mode model (wled-midi v0.6 — the default config of the unified syntax):
+Lamp-mode model (the default config of the spec's unified syntax; see SPEC_VERSION):
   - CHANNEL = a lamp group/target (1-16 per port; channel 1 = "all").
   - NOTES are organised in zones:
       LOOKS (59-68)      what the lamp SHOWS, mutually exclusive: black + 7 hues + white + effect.
@@ -59,8 +63,25 @@ API = "http://127.0.0.1:8377"
 FALLBACK_FXCOUNT = 118
 FALLBACK_PALCOUNT = 71
 
-# wled-midi v0.2.0 default map. Numbers remappable in midi-mapping.json; the CC
-# transforms and zone semantics are the stable contract.
+# The revision of the openlamp-spec-midi spec this module implements.
+# https://github.com/openlamp/openlamp-spec-midi/blob/main/SPEC.md is the source
+# of truth for the spec itself; this constant is the ONLY place
+# this file states a number, so it can't drift against a docstring or a banner.
+#
+# Why 0.6.2 and not SPEC.md's current 0.6.3: what this module implements is the
+# 0.6.2 wire behaviour — lamp mode, mpe mode, and all four `strip` position
+# functions (interpolate / keymap / direct / zone, `zone` being what 0.6.2 added).
+# 0.6.3's only change is the §14 patent & openness policy, a licensing statement
+# with no wire change, so nothing here is stale against 0.6.3.
+#
+# Not implemented, and the reason this doesn't claim the whole of 0.6.x: the
+# optional `lamp` big-rig variant added in 0.6.0 (1 note = 1 lamp, 128 addressable
+# on one channel, for rigs > 16 lamps — SPEC.md, "One unified syntax"). Lamp mode
+# here is channel-per-target only.
+SPEC_VERSION = "0.6.2"
+
+# Default map. Numbers remappable in midi-mapping.json; the CC transforms and zone
+# semantics are the stable, normative part of the spec.
 DEFAULT = {
     "port_name": "OpenLamp",
     # ONE MIDI CHANNEL PER TARGET (device / segment / group), or "all".
@@ -680,7 +701,8 @@ def start_bridge(cfg):
 def main():
     cfg = load_cfg()
     br, midi_in, midi_out = start_bridge(cfg)
-    print("OpenLamp MIDI (wled-midi v0.2) — virtual port '%s' open." % cfg["port_name"])
+    print("OpenLamp MIDI (openlamp-spec-midi %s) — virtual port '%s' open."
+          % (SPEC_VERSION, cfg["port_name"]))
     print("Route your DAW/controller MIDI to it. Ctrl-C to quit.")
     try:
         while True:
