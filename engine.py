@@ -33,9 +33,10 @@ if getattr(sys, "frozen", False):
     HERE = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
     _FALLBACK = HERE
 else:
-    # dev mode: this file lives in scripts/lamps/sd-plugin, lamp.py one level up
+    # dev mode: lamp.py sits next to this file in the standalone repo, one level up
+    # when embedded in the Stream Deck plugin (scripts/lamps/sd-plugin).
     HERE = os.path.dirname(os.path.abspath(__file__))
-    _FALLBACK = os.path.dirname(HERE)
+    _FALLBACK = HERE if os.path.isfile(os.path.join(HERE, "lamp.py")) else os.path.dirname(HERE)
 # Optional external source-of-truth for lamp.py + tuya-lamps.json, e.g. a synced
 # folder (Google Drive/Dropbox) shared with the CLI. Set OPENLAMP_LAMPS_DIR to that
 # path; otherwise the files bundled next to the plugin/script are used.
