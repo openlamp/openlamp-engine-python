@@ -93,13 +93,27 @@ def test_beat_toggle():
 
 
 def test_beat_pulse_on_clock():
-    br, sent = bridge()
+    # beat_batch_ms=0 sends each pulse immediately; the batched path is tested below.
+    br, sent = bridge(beat_batch_ms=0)
     br.dispatch([0x90, 72, 100])                  # beat on (ch1)
     sent.clear()
     for _ in range(24):                           # one beat of clock ticks
         br.dispatch([0xF8])
     bries = [c for c, _ in sent if c.startswith('{"bri"')]
     check("beat pulses (accent+trough)", len(bries) >= 2, True)
+
+
+def test_beat_pulse_batched():
+    # Batched (SPEC §7): pulses wait in beat_pending until the window flushes them.
+    # Flushing after every tick stands in for the daemon's flush timer.
+    br, sent = bridge(beat_batch_ms=20)
+    br.dispatch([0x90, 72, 100])
+    sent.clear()
+    for _ in range(24):
+        br.dispatch([0xF8])
+        br.flush_beat()
+    bries = [c for c, _ in sent if c.startswith('{"bri"')]
+    check("batched beat pulses (accent+trough)", len(bries) >= 2, True)
 
 
 # ---- MPE mode ------------------------------------------------------------------
